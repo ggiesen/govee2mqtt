@@ -115,7 +115,7 @@ pub struct EventConfig {
 fn event_presentation(instance: &str) -> (String, Option<&'static str>) {
     match instance {
         "iceFull" => ("Ice Maker Full".to_string(), Some("mdi:bucket")),
-        "lackWaterEvent" => ("Lack of Water".to_string(), Some("mdi:water-alert-outline")),
+        "lackWaterEvent" => ("Out of Water".to_string(), Some("mdi:water-alert-outline")),
         _ => {
             // Drop a trailing `Event` so eg: `lackWaterEvent` -> "Lack Water".
             let label = instance.strip_suffix("Event").unwrap_or(instance);
@@ -260,7 +260,7 @@ mod test {
         );
         assert_eq!(
             event_presentation("lackWaterEvent"),
-            ("Lack of Water".to_string(), Some("mdi:water-alert-outline"))
+            ("Out of Water".to_string(), Some("mdi:water-alert-outline"))
         );
         // Unknown instance: humanized name, trailing "Event" dropped, no icon.
         assert_eq!(
