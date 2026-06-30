@@ -108,6 +108,22 @@ pub struct EventConfig {
     pub event_types: Vec<String>,
 }
 
+/// Friendly name and icon for an event capability. Govee's instance names
+/// are terse and inconsistent, so map the well-known ones to nicer names and
+/// icons. Anything unknown falls back to a humanized version of the instance
+/// name (with a trailing "Event" stripped) and no icon.
+fn event_presentation(instance: &str) -> (String, Option<&'static str>) {
+    match instance {
+        "iceFull" => ("Ice Maker Full".to_string(), Some("mdi:bucket")),
+        "lackWaterEvent" => ("Lack of Water".to_string(), Some("mdi:water-alert-outline")),
+        _ => {
+            // Drop a trailing `Event` so eg: `lackWaterEvent` -> "Lack Water".
+            let label = instance.strip_suffix("Event").unwrap_or(instance);
+            (camel_case_to_space_separated(label), None)
+        }
+    }
+}
+
 impl EventConfig {
     /// Create an event entity for the given event capability, if it has
     /// usable metadata. Returns `None` when no event types can be derived,
@@ -122,21 +138,18 @@ impl EventConfig {
             inst = topic_safe_string(&cap.instance)
         );
 
-        // Govee instance names are inconsistent (eg: `iceFull` vs
-        // `lackWaterEvent`); drop a trailing `Event` so the friendly name
-        // reads more naturally.
-        let label = cap.instance.strip_suffix("Event").unwrap_or(&cap.instance);
+        let (name, icon) = event_presentation(&cap.instance);
 
         Some(Self {
             base: EntityConfig {
                 availability_topic: availability_topic(),
-                name: Some(camel_case_to_space_separated(label)),
+                name: Some(name),
                 entity_category: None,
                 origin: Origin::default(),
                 device: Device::for_device(device),
                 unique_id,
                 device_class: None,
-                icon: None,
+                icon: icon.map(|s| s.to_string()),
             },
             state_topic: event_state_topic(device, &cap.instance),
             event_types: info.event_types,
@@ -237,5 +250,40 @@ mod test {
         );
         assert_eq!(event_type_label("Presence", None), "Presence");
         assert_eq!(event_type_label("Presence", Some("")), "Presence");
+    }
+
+    #[test]
+    fn presentation_known_and_fallback() {
+        assert_eq!(
+            event_presentation("iceFull"),
+            ("Ice Maker Full".to_string(), Some("mdi:bucket"))
+        );
+        assert_eq!(
+            event_presentation("lackWaterEvent"),
+            ("Lack of Water".to_string(), Some("mdi:water-alert-outline"))
+        );
+        // Unknown instance: humanized name, trailing "Event" dropped, no icon.
+        assert_eq!(
+            event_presentation("bodyAppearedEvent"),
+            ("Body Appeared".to_string(), None)
+        );
+    }
+
+    #[test]
+    fn event_config_uses_friendly_name_and_icon() {
+        let device = ServiceDevice::new("H7172", "9A:52:60:74:F4:48:A5:DE");
+        let cap = cap(r#"{
+                "type": "devices.capabilities.event",
+                "instance": "iceFull",
+                "eventState": {
+                    "options": [
+                        {"name": "iceFull", "value": 1, "message": "ice maker full"}
+                    ]
+                }
+            }"#);
+        let ev = EventConfig::new(&device, &cap).expect("entity");
+        assert_eq!(ev.base.name.as_deref(), Some("Ice Maker Full"));
+        assert_eq!(ev.base.icon.as_deref(), Some("mdi:bucket"));
+        assert_eq!(ev.event_types, vec!["ice maker full".to_string()]);
     }
 }
